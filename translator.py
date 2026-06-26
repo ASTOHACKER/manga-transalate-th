@@ -100,13 +100,29 @@ def save_config(cfg):
 
 def get_translation_prompt(comic_type):
     base_instruction = (
-        "You are an expert comic translator. Translate the given JSON array of texts to Thai.\n"
-        "Crucial Directions:\n"
-        "1. Fix OCR noise, broken words, hyphenations, and typos in the input before translating (e.g. 'GLoOM' -> 'หดหู่...', 'AT :. HOME AND AT SCHO- OL:_' -> 'ทั้งที่บ้านและที่โรงเรียน', 'TO- GETH- ER?' -> 'อยู่ด้วยกัน?', 'storyi' -> 'story', 'Seeminglyt' -> 'Seemingly').\n"
-        "2. Polish and rephrase the wording ('เกาสำนวนไทย') so it reads naturally, effortlessly, and holds high literary flow in Thai. Avoid robotic word-for-word translation.\n"
-        "3. Format the Thai translation with natural line breaks ('\\n') so that the text fits beautifully inside a typical round/oval comic speech bubble.\n"
-        "4. Insert newlines ONLY at natural phrasing/breath boundaries, never mid-word. Keep lines balanced in length (prefer a balanced diamond/pyramid shape: shorter at top/bottom, wider in middle) to maximize bubble space efficiency.\n"
-        "Return a JSON object with a single key 'translations' containing the array of translated strings in the exact same order."
+        "You are an expert manga/webtoon localizer and translator. Translate the given JSON array of English texts to natural, high-quality Thai.\n"
+        "Strictly follow these 5 core translation and typesetting rules:\n\n"
+        "1. CHARACTER VOICE (เสียงและคาร์แรคเตอร์ตัวละคร):\n"
+        "   - Match pronouns and particles to character relationships, age, and personality.\n"
+        "   - Hot-headed/casual: 'ฉัน/แก', 'ข้า/เอ็ง', 'เรา/นาย' (particles: 'ฟระ/วะ/ฟะ').\n"
+        "   - Polite/formal: 'ผม/คุณ', 'ดิฉัน/คุณ' (particles: 'คะ/ค่ะ/ครับ').\n"
+        "   - Use consistent catchphrases and tone. Never translate pronouns robotically.\n\n"
+        "2. LOCALIZATION & PUNS (การจัดการมุกตลกและบริบททางวัฒนธรรม):\n"
+        "   - Never translate puns/wordplay word-for-word. Adapt them into natural Thai humor with equivalent comedic weight.\n"
+        "   - Keep cultural terms transliterated (e.g. 'Takoyaki' -> 'ทาโกะยากิ', 'Obon' -> 'เทศกาลโอบง'). Do NOT localize them into Thai equivalents (e.g. do not translate Takoyaki to 'ขนมครกญี่ปุ่น').\n\n"
+        "3. SFX TRANSLATION (การแปลเสียงเอฟเฟกต์):\n"
+        "   - Translate environmental, action, and emotional SFX into punchy, natural Thai SFX.\n"
+        "   - Emotion: 'GLOOM' -> 'หดหู่...', 'SIGH' -> 'เฮ้อ...'\n"
+        "   - Action: 'CRASH' -> 'โครม!/ปัง!', 'SLASH' -> 'ฉับ!/ฟึ่บ!', 'STEPS' -> 'ตึก ตึก'\n"
+        "   - Match SFX volume/length: use trailing characters for loud sounds (e.g. 'ตู้มมมม!!').\n\n"
+        "4. SPACE & FORMATTING (การจัดการพื้นที่ในบอลลูนคำพูด):\n"
+        "   - Keep translations highly concise ('เกาสำนวนให้กระชับ') to prevent text overflowing or shrinking inside speech bubbles.\n"
+        "   - Format with natural line breaks ('\\n') to fit beautifully inside round/oval bubbles.\n"
+        "   - Keep lines balanced in length (prefer a diamond/pyramid shape: shorter at top/bottom, wider in middle).\n"
+        "   - Never split a Thai word across lines (e.g., do not split 'โรงเรียน' into 'โรงเรี' and 'ยน').\n\n"
+        "5. NATURAL SPOKEN THAI (การอ่านออกเสียงเป็นธรรมชาติ):\n"
+        "   - Rephrase sentences so they read like natural, spoken Thai. If a phrase feels stiff or 'translated' when read aloud, rephrase it completely into natural dialogue.\n\n"
+        "Return a JSON object with a single key 'translations' containing the array of localized Thai strings in the exact same order."
     )
     
     if "Manga" in comic_type:
