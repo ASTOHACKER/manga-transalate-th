@@ -20,11 +20,12 @@ import cv2
 from deep_translator import GoogleTranslator
 import urllib.request
 
-# --- DPI Awareness for Windows ---
+# --- DPI Awareness for Windows (Critical Fix for Coordinate Drift) ---
 if os.name == "nt":
     import ctypes
     try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # Per-Monitor DPI Aware
+        # Set DPI awareness to Per-Monitor DPI Aware V2
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
     except Exception:
         try:
             ctypes.windll.user32.SetProcessDPIAware()
@@ -335,7 +336,6 @@ class OverlayWindow(tk.Toplevel):
         self.canvas.create_image(0, 0, image=self.bg_photo, anchor="nw")
 
         # Custom high-fidelity font drawing using PIL directly on image
-        # PIL handles font anti-aliasing, letter spacing, and rendering MUCH cleaner than Tkinter Canvas.
         self._render_premium_text(blocks, orig_img, inpainted_img, w, h)
 
         # Keyboard Peeking bindings
@@ -1119,7 +1119,9 @@ class TranslatorApp:
             self._set_status("Capturing...", "process")
             self._log(f"Region: {bbox}")
 
+            # Grab image in original size
             img = ImageGrab.grab(bbox=bbox)
+            w, h = img.size
 
             self._set_status("Running OCR...", "process")
             
@@ -1132,7 +1134,8 @@ class TranslatorApp:
                     self._log("OCR model loaded ✓")
                 reader = self.reader
 
-            w, h = img.size
+            # CRITICAL: We upscale the image 2x for EasyOCR to ensure high accuracy on small fonts,
+            # but we MUST scale the coordinate results back down to 1x to align 1:1 with the original image size.
             try:
                 resample_filter = Image.Resampling.LANCZOS
             except AttributeError:
@@ -1149,6 +1152,7 @@ class TranslatorApp:
                     conf = 1.0
                 else:
                     box, orig_text, conf = item
+                # Map coordinates back from 2x space to original 1x space
                 scaled_box = [[p[0] / 2, p[1] / 2] for p in box]
                 scaled_results.append((scaled_box, orig_text, conf))
             results = scaled_results
@@ -1195,7 +1199,7 @@ class TranslatorApp:
                     # Create a black mask (same size as image)
                     mask = np.zeros(cv_img.shape[:2], dtype=np.uint8)
                     
-                    # Draw white rectangles on mask where text blocks are located
+                    # Draw white rectangles on mask where text blocks are located (using 1x coordinates)
                     for b in blocks:
                         box = b["box"]
                         xs = [p[0] for p in box]
@@ -1203,8 +1207,8 @@ class TranslatorApp:
                         bx0, by0 = int(min(xs)), int(min(ys))
                         bx1, by1 = int(max(xs)), int(max(ys))
                         
-                        # Add padding to ensure the text boundary is fully covered
-                        pad = 2
+                        # Add slight padding to ensure boundaries are fully covered
+                        pad = 4
                         cv2.rectangle(
                             mask, 
                             (max(0, bx0 - pad), max(0, by0 - pad)), 
@@ -1214,7 +1218,7 @@ class TranslatorApp:
                         )
                     
                     # Run OpenCV Inpainting (Telea algorithm - works exceptionally well for manga line art)
-                    inpainted_cv = cv2.inpaint(cv_img, mask, inpaintRadius=5, flags=cv2.INPAINT_TELEA)
+                    inpainted_cv = cv2.inpaint(cv_img, mask, inpaintRadius=4, flags=cv2.INPAINT_TELEA)
                     
                     # Convert back to PIL Image
                     inpainted_img = Image.fromarray(cv2.cvtColor(inpainted_cv, cv2.COLOR_BGR2RGB))
