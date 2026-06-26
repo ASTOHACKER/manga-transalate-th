@@ -17,15 +17,19 @@ This project is a Windows Tkinter desktop utility that grabs screen regions, per
 3. **9Router Streaming (SSE):**
    9Router gateway returns SSE chunks (`data: ...`). The parser splits and decodes chunks inline instead of doing a direct `json.loads` on raw response.
 4. **Manga/Manhwa/Manhua Translation Prompts:**
-   The `get_translation_prompt(src_lang_name)` function generates distinct system prompts mapping to the medium's style (Shonen Manga, Modern Webtoon Manhwa, or Cultivation Manhua).
+   The `get_translation_prompt(src_lang_name)` function generates distinct system prompts mapping to the medium's style (Shonen Manga, Modern Webtoon Manhwa, or Cultivation Manhua). It enforces **5 Golden Localization Rules**: Character Voice, Localization/Puns, Implicit SFX classification, Space Optimization/Summarization, and Natural Spoken Thai.
 5. **OpenCV Inpainting & Transparent Clipping:**
    - When enabled (`inpaint_enabled`), `cv2.inpaint(..., cv2.INPAINT_TELEA)` deletes original text.
+   - **Smart Speech Bubble Contour Detection:** Before inpainting/drawing, crops a 12px search padding around text boxes, thresholding high-luminance (white) pixels, and runs `cv2.findContours` to expand the overlay box to cover the entire speech bubble boundary seamlessly.
    - **Clipped Bounding-Box Overlay:** The overlay window uses a black transparent background (`-transparentcolor = "black"`). Only the inpainted speech bubble slices (with padding) and the anti-aliased Thai text are drawn. This leaves all non-text areas of the manga 100% visible, preventing any overlay boxes from obscuring the artwork outside the bubbles.
+   - **Specialized SFX Formatting:** Blocks beginning with `[SFX: ...]` bypass inpainting to preserve underlying manga action lines, and are rendered in dramatic golden-yellow with heavy dark orange strokes using customized handwriting fonts (Sriracha, Pattaya) at 45% bubble height scale.
 6. **Obsidian Integration:**
    Appends a Markdown table log of every translation batch to `C:\Users\narudom\Documents\Obsidian Vault\Manga Translations.md` if `obsidian_sync` is checked.
-7. **Thai Typography:**
-   `_wrap_thai_text` uses pixel-width measurements via `font.measure` to wrap Thai text without mid-syllable cuts. Diacritics padding is added to prevent line collisions.
-8. **Interactive Peeking:**
+7. **Thai Typography & Word Wrapping:**
+   `_wrap_thai_text_pil` uses PyThaiNLP's dictionary-backed tokenization (`word_tokenize`) to wrap Thai text without mid-syllable cuts. Safely splits long English words character by character using combining diacritics filters to prevent vowel/tone floating errors.
+8. **OCR Image Enhancement:**
+   Automatically upscales screen grabs **2x** using LANCZOS resampling before running EasyOCR to significantly improve character recognition accuracy on small fonts, translating the resulting coordinates back to 1:1 space.
+9. **Interactive Peeking:**
    Holding `Ctrl` or `Shift` temporarily sets overlay transparency to `alpha = 0` so the user can quickly peek at the raw text underneath.
 
 ### Troubleshooting
