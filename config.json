@@ -1,0 +1,12 @@
+{
+  "backend": "Google Translate (Free)",
+  "api_key": "",
+  "model": "",
+  "base_url": "",
+  "ninerouter_url": "http://localhost:20128",
+  "ninerouter_key": "sk-...",
+  "ninerouter_model": "my-combo",
+  "font_family": "Leelawadee UI",
+  "max_font_size": 32,
+  "font_weight": "bold"
+}
