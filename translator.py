@@ -101,10 +101,11 @@ def save_config(cfg):
 
 def get_translation_prompt(comic_type):
     base_instruction = (
-        "You are an expert comic translator. Translate the given JSON array of texts to Thai. "
-        "Crucial: Polish and rephrase the wording ('เกาสำนวนไทย') so it reads naturally, effortlessly, and holds high literary flow in Thai. "
-        "Strictly avoid word-for-word literal translations (e.g., do not translate 'What brings you here?' as 'อะไรนำคุณมาที่นี่', instead use 'มีธุระอะไรคู่ควรมาที่นี่' or 'ลมอะไรพัดมาล่ะ'). "
-        "The dialogue must sound like a professional human-localized comic book, not a machine. Keep it punchy, concise, and easy to read. "
+        "You are an expert comic translator. Translate the given JSON array of texts to Thai.\n"
+        "Crucial Directions:\n"
+        "1. Polish and rephrase the wording ('เกาสำนวนไทย') so it reads naturally, effortlessly, and holds high literary flow in Thai. Avoid robotic word-for-word translation.\n"
+        "2. Format the Thai translation with natural line breaks ('\\n') so that the text fits beautifully inside a typical round/oval comic speech bubble.\n"
+        "3. Insert newlines ONLY at natural phrasing/breath boundaries, never mid-word. Keep lines balanced in length (prefer a balanced diamond/pyramid shape: shorter at top/bottom, wider in middle) to maximize bubble space efficiency.\n"
         "Return a JSON object with a single key 'translations' containing the array of translated strings in the exact same order."
     )
     
@@ -362,39 +363,66 @@ class OverlayWindow(tk.Toplevel):
             self.attributes("-alpha", 0.98)
 
     def _wrap_thai_text_pil(self, text, draw, font, max_width):
+        """
+        Premium Thai Word Wrapping engine.
+        Respects existing model-generated newlines (\\n) first!
+        If a line is still too long, it dynamically wraps at spaces or natural boundaries.
+        """
         max_width = max(max_width, 35)
+        
+        # If the LLM has already formatted the text with balanced newlines, respect them!
         lines = []
         paragraphs = text.split('\n')
         
         for para in paragraphs:
+            if not para.strip():
+                continue
+            
+            # If the individual paragraph fits, keep it as is
+            bb = draw.textbbox((0, 0), para, font=font)
+            para_w = bb[2] - bb[0]
+            if para_w <= max_width:
+                lines.append(para)
+                continue
+                
+            # Otherwise, wrap dynamically at spaces
             tokens = para.split(' ')
+            current_line = ""
             for token in tokens:
                 if not token:
                     continue
                 
-                current_line = ""
-                i = 0
-                while i < len(token):
-                    char = token[i]
-                    test_line = current_line + char
-                    
-                    # Measure width using PIL font metrics
-                    bbox = draw.textbbox((0, 0), test_line, font=font)
-                    w = bbox[2] - bbox[0]
-                    
-                    if w <= max_width:
-                        current_line = test_line
-                        i += 1
-                    else:
-                        if not current_line:
-                            current_line = char
-                            i += 1
-                        lines.append(current_line)
-                        current_line = ""
+                # Test adding the token to the current line
+                test_line = (current_line + " " + token).strip() if current_line else token
+                bb_test = draw.textbbox((0, 0), test_line, font=font)
+                test_w = bb_test[2] - bb_test[0]
                 
-                if current_line:
-                    lines.append(current_line)
-                    
+                if test_w <= max_width:
+                    current_line = test_line
+                else:
+                    if current_line:
+                        lines.append(current_line)
+                    # Handle extremely long words by character subdivision if necessary
+                    bb_tok = draw.textbbox((0, 0), token, font=font)
+                    tok_w = bb_tok[2] - bb_tok[0]
+                    if tok_w > max_width:
+                        # Character-by-character wrap for long unbroken strings
+                        sub_line = ""
+                        for char in token:
+                            test_sub = sub_line + char
+                            bb_sub = draw.textbbox((0, 0), test_sub, font=font)
+                            if bb_sub[2] - bb_sub[0] <= max_width:
+                                sub_line = test_sub
+                            else:
+                                if sub_line:
+                                    lines.append(sub_line)
+                                sub_line = char
+                        current_line = sub_line
+                    else:
+                        current_line = token
+            if current_line:
+                lines.append(current_line)
+                
         return "\n".join(lines)
 
     def _render_premium_text(self, blocks, orig_img, inpainted_img, w, h):
