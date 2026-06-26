@@ -1285,7 +1285,7 @@ class TranslatorApp:
                 blocks.append({"box": box, "text": trans, "original": orig_text})
                 self._log(f"  [{orig_text}] → [{trans}]")
 
-            # --- OpenCV Smart Inpainting (ลบตัวอักษรเดิมด้วย AI ลายเส้น) ---
+    # --- OpenCV Smart Inpainting (ลบตัวอักษรเดิมด้วย AI ลายเส้น) ---
             inpainted_img = img
             if self.cfg.get("inpaint_enabled", True):
                 self._set_status("Inpainting background...", "process")
@@ -1296,16 +1296,66 @@ class TranslatorApp:
                     # Create a black mask (same size as image)
                     mask = np.zeros(cv_img.shape[:2], dtype=np.uint8)
                     
-                    # Draw white rectangles on mask where text blocks are located (using 1x coordinates)
+                    # Draw white contours or rectangles on mask where text blocks are located
                     for b in blocks:
                         box = b["box"]
                         xs = [p[0] for p in box]
                         ys = [p[1] for p in box]
                         bx0, by0 = int(min(xs)), int(min(ys))
                         bx1, by1 = int(max(xs)), int(max(ys))
+                        bw_box = bx1 - bx0
+                        bh_box = by1 - by0
                         
-                        # Add slight padding to ensure boundaries are fully covered
-                        pad = 4
+                        # --- Smart Bubble Expansion ---
+                        # We crop a slightly larger area around the text block to search for speech bubble boundaries
+                        pad_search = 12
+                        sx0 = max(0, bx0 - pad_search)
+                        sy0 = max(0, by0 - pad_search)
+                        sx1 = min(w, bx1 + pad_search)
+                        sy1 = min(h, by1 + pad_search)
+                        
+                        cropped_search = cv_img[sy0:sy1, sx0:sx1]
+                        # Convert to grayscale and threshold to isolate high-luminance (white) speech bubble area
+                        gray_search = cv2.cvtColor(cropped_search, cv2.COLOR_BGR2GRAY)
+                        _, thresh = cv2.threshold(gray_search, 240, 255, cv2.THRESH_BINARY)
+                        
+                        # Find contours within this search window
+                        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                        
+                        expanded = False
+                        if contours:
+                            # Find the largest contour that covers the center area (where the text is located)
+                            center_x = bx0 - sx0 + bw_box / 2
+                            center_y = by0 - sy0 + bh_box / 2
+                            
+                            best_contour = None
+                            max_area = 0
+                            for cnt in contours:
+                                area = cv2.contourArea(cnt)
+                                # Check if center of text is inside or very close to this contour
+                                dist = cv2.pointPolygonTest(cnt, (center_x, center_y), False)
+                                if dist >= -5 and area > max_area:
+                                    max_area = area
+                                    best_contour = cnt
+                                    
+                            if best_contour is not None:
+                                # Get bounding box of the detected bubble contour
+                                cx, cy, cw_cnt, ch_cnt = cv2.boundingRect(best_contour)
+                                # Map back to absolute image coordinates
+                                abx0 = sx0 + cx
+                                aby0 = sy0 + cy
+                                abx1 = abx0 + cw_cnt
+                                aby1 = aby0 + ch_cnt
+                                
+                                # Safety guard: ensure the expanded bubble doesn't blow up ridiculously
+                                if cw_cnt < bw_box * 3 and ch_cnt < bh_box * 3:
+                                    # Adjust the box to match the detected bubble boundary with slight padding
+                                    b["box"] = [[abx0, aby0], [abx1, aby0], [abx1, aby1], [abx0, aby1]]
+                                    bx0, by0, bx1, by1 = abx0, aby0, abx1, aby1
+                                    expanded = True
+                        
+                        # If contour-based expansion couldn't resolve, fallback to a standard padded rectangle
+                        pad = 4 if expanded else 6
                         cv2.rectangle(
                             mask, 
                             (max(0, bx0 - pad), max(0, by0 - pad)), 
