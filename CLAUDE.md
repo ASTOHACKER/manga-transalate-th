@@ -18,8 +18,9 @@ This project is a Windows Tkinter desktop utility that grabs screen regions, per
    9Router gateway returns SSE chunks (`data: ...`). The parser splits and decodes chunks inline instead of doing a direct `json.loads` on raw response.
 4. **Manga/Manhwa/Manhua Translation Prompts:**
    The `get_translation_prompt(src_lang_name)` function generates distinct system prompts mapping to the medium's style (Shonen Manga, Modern Webtoon Manhwa, or Cultivation Manhua).
-5. **OpenCV Inpainting:**
-   When enabled (`inpaint_enabled` in config), `cv2.inpaint(..., cv2.INPAINT_TELEA)` deletes the original foreign text using surrounding line art pixels, creating a seamless background canvas for Thai text.
+5. **OpenCV Inpainting & Transparent Clipping:**
+   - When enabled (`inpaint_enabled`), `cv2.inpaint(..., cv2.INPAINT_TELEA)` deletes original text.
+   - **Clipped Bounding-Box Overlay:** The overlay window uses a black transparent background (`-transparentcolor = "black"`). Only the inpainted speech bubble slices (with padding) and the anti-aliased Thai text are drawn. This leaves all non-text areas of the manga 100% visible, preventing any overlay boxes from obscuring the artwork outside the bubbles.
 6. **Obsidian Integration:**
    Appends a Markdown table log of every translation batch to `C:\Users\narudom\Documents\Obsidian Vault\Manga Translations.md` if `obsidian_sync` is checked.
 7. **Thai Typography:**

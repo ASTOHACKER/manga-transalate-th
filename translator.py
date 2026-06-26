@@ -20,12 +20,11 @@ import cv2
 from deep_translator import GoogleTranslator
 import urllib.request
 
-# --- DPI Awareness for Windows (Critical Fix for Coordinate Drift) ---
+# --- DPI Awareness for Windows ---
 if os.name == "nt":
     import ctypes
     try:
-        # Set DPI awareness to Per-Monitor DPI Aware V2
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # Per-Monitor DPI Aware
     except Exception:
         try:
             ctypes.windll.user32.SetProcessDPIAware()
@@ -324,19 +323,15 @@ class OverlayWindow(tk.Toplevel):
         w, h = x1 - x0, y1 - y0
         self.geometry(f"{w}x{h}+{x0}+{y0}")
 
-        # Semi-transparent high-end overlay panel styling
-        self.attributes("-alpha", 0.98)
+        # Set transparent window. Non-rendered areas will be 100% transparent.
+        self.attributes("-alpha", 1.0)
         self.configure(bg="black")
         self.wm_attributes("-transparentcolor", "black")
 
         self.canvas = tk.Canvas(self, bg="black", highlightthickness=0, width=w, height=h)
         self.canvas.pack(fill="both", expand=True)
 
-        # Draw the background image on the canvas (inpainted or original based on setting)
-        self.bg_photo = ImageTk.PhotoImage(inpainted_img)
-        self.canvas.create_image(0, 0, image=self.bg_photo, anchor="nw")
-
-        # Custom high-fidelity font drawing using PIL directly on image
+        # Render premium localized text onto specific speech bubble zones ONLY
         self._render_premium_text(blocks, orig_img, inpainted_img, w, h)
 
         # Keyboard Peeking bindings
@@ -360,17 +355,10 @@ class OverlayWindow(tk.Toplevel):
 
     def _on_key_release(self, event):
         if event.keysym in ("Control_L", "Control_R", "Shift_L", "Shift_R"):
-            self.attributes("-alpha", 0.98)
+            self.attributes("-alpha", 1.0)
 
-    def _wrap_thai_text_pil(self, text, draw, font, max_width):
-        """
-        Premium Thai Word Wrapping engine.
-        Respects existing model-generated newlines (\\n) first!
-        If a line is still too long, it dynamically wraps at spaces or natural boundaries.
-        """
+    def _wrap_thai_text_pil(self, draw, text, font, max_width):
         max_width = max(max_width, 35)
-        
-        # If the LLM has already formatted the text with balanced newlines, respect them!
         lines = []
         paragraphs = text.split('\n')
         
@@ -426,9 +414,9 @@ class OverlayWindow(tk.Toplevel):
         return "\n".join(lines)
 
     def _render_premium_text(self, blocks, orig_img, inpainted_img, w, h):
-        # We draw onto a clean transparent overlay image and composite it for perfect anti-aliasing
-        text_layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(text_layer)
+        # Create a fully transparent layer. Non-bubble areas will be 100% transparent (transparent color 'black' in Tkinter)
+        overlay_layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay_layer)
 
         font_family = self.cfg.get("font_family", "Leelawadee UI")
         max_size = int(self.cfg.get("max_font_size", 24))
@@ -452,7 +440,7 @@ class OverlayWindow(tk.Toplevel):
             if bw < 5 or bh < 5:
                 continue
 
-            # Extract color
+            # Extract background color under the bubble
             bg_color = (255, 255, 255)
             try:
                 crop = orig_img.crop((bx0, by0, bx1, by1))
@@ -465,18 +453,33 @@ class OverlayWindow(tk.Toplevel):
             text_color = (0, 0, 0, 255) if luminance > 130 else (255, 255, 255, 255)
             stroke_color = (255, 255, 255, 255) if luminance <= 130 else (0, 0, 0, 255)
 
-            # Font calculation
+            # Paste only the inpainted speech bubble area onto our transparent canvas
+            if self.cfg.get("inpaint_enabled", True):
+                pad = 4
+                cbx0 = max(0, int(bx0 - pad))
+                cby0 = max(0, int(by0 - pad))
+                cbx1 = min(w, int(bx1 + pad))
+                cby1 = min(h, int(by1 + pad))
+                bubble_crop = inpainted_img.crop((cbx0, cby0, cbx1, cby1)).convert("RGBA")
+                overlay_layer.paste(bubble_crop, (cbx0, cby0))
+            else:
+                # If inpainting is disabled, draw a rounded bubble shape only over the text area
+                pad = 4
+                rx0, ry0, rx1, ry1 = bx0 - pad, by0 - pad, bx1 + pad, by1 + pad
+                draw.rounded_rectangle(
+                    [rx0, ry0, rx1, ry1],
+                    radius=min(12, bw // 4, bh // 4),
+                    fill=(bg_color[0], bg_color[1], bg_color[2], 255)
+                )
+
+            # Dynamic font scaling
             font_size = max(10, min(int(bh * 0.42), max_size))
-            
             try:
                 font = ImageFont.truetype(font_path, font_size)
             except Exception:
                 font = ImageFont.load_default()
 
-            # Dynamic line wrapping & scaling loop
-            wrapped_text = self._wrap_thai_text_pil(text, draw, font, bw - 8)
-            
-            # Measure wrapped size
+            wrapped_text = self._wrap_thai_text_pil(draw, text, font, bw - 8)
             lines = wrapped_text.split("\n")
             
             def get_text_size(lines_list, fn):
@@ -487,12 +490,12 @@ class OverlayWindow(tk.Toplevel):
                     line_w = bb[2] - bb[0]
                     line_h = bb[3] - bb[1]
                     max_w = max(max_w, line_w)
-                    th += line_h + int(line_h * 0.2) # Line height + padding
+                    th += line_h + int(line_h * 0.2)
                 return max_w, th
 
             tw, th = get_text_size(lines, font)
 
-            # Prevent overflow: scale font down if too tall
+            # Scale down if overflowing the bubble boundary
             attempts = 0
             while (th > bh or tw > bw) and font_size > 8 and attempts < 6:
                 font_size -= 2
@@ -500,32 +503,19 @@ class OverlayWindow(tk.Toplevel):
                     font = ImageFont.truetype(font_path, font_size)
                 except Exception:
                     break
-                wrapped_text = self._wrap_thai_text_pil(text, draw, font, bw - 8)
+                wrapped_text = self._wrap_thai_text_pil(draw, text, font, bw - 8)
                 lines = wrapped_text.split("\n")
                 tw, th = get_text_size(lines, font)
                 attempts += 1
 
-            # Render fallback rounded bubble under text if inpainting is off
-            if not self.cfg.get("inpaint_enabled", True):
-                pad = 4
-                rx0, ry0, rx1, ry1 = bx0 - pad, by0 - pad, bx1 + pad, by1 + pad
-                draw.rounded_rectangle(
-                    [rx0, ry0, rx1, ry1],
-                    radius=min(12, bw // 4, bh // 4),
-                    fill=(bg_color[0], bg_color[1], bg_color[2], 255)
-                )
-
-            # Perfect center calculation
-            # Draw each line centered horizontally and vertically
+            # Render text centered inside the specific bubble area
             y_cursor = by0 + (bh - th) / 2
             for line in lines:
                 bb = draw.textbbox((0, 0), line, font=font)
                 line_w = bb[2] - bb[0]
                 line_h = bb[3] - bb[1]
-                
                 cx = bx0 + (bw - line_w) / 2
                 
-                # Render clean anti-aliased font with subtle outline for maximum readability
                 draw.text(
                     (cx, y_cursor), 
                     line, 
@@ -536,9 +526,15 @@ class OverlayWindow(tk.Toplevel):
                 )
                 y_cursor += line_h + int(line_h * 0.2)
 
-        # Composite the layers
-        composite_img = Image.alpha_composite(inpainted_img.convert("RGBA"), text_layer)
-        self.composite_photo = ImageTk.PhotoImage(composite_img)
+        # Crucial Tkinter Alpha Fix: Convert pure black pixels (0,0,0) with alpha > 0
+        # to a very dark gray (1,1,1) so that Tkinter transparentcolor does not
+        # treat them as transparent holes inside the text or bubble background.
+        arr = np.array(overlay_layer)
+        black_pixels = (arr[:, :, 0] == 0) & (arr[:, :, 1] == 0) & (arr[:, :, 2] == 0) & (arr[:, :, 3] > 0)
+        arr[black_pixels, :3] = 1
+        final_overlay_img = Image.fromarray(arr)
+
+        self.composite_photo = ImageTk.PhotoImage(final_overlay_img)
         self.canvas.create_image(0, 0, image=self.composite_photo, anchor="nw")
 
 

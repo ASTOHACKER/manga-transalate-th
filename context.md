@@ -34,7 +34,8 @@ A lightweight Python desktop application that captures a selected screen region,
 6. **Appearance & Interactive Peeking:**
    - Custom fonts (`font_family`), maximum size (`max_font_size`), and font weights (`bold` / `normal`) are configurable and persistent.
    - Users can hold **Ctrl** or **Shift** to temporarily hide the translation overlay and peek at the original manga text.
-7. **OpenCV Smart Inpainting & Overlay Render:** 
+6. **OpenCV Smart Inpainting & Overlay Render:** 
    - Telea algorithm deletes original foreign text using surrounding line art pixels, making a seamless canvas.
    - If disabled, renders a matching rounded-corner bubble background to cover the original text.
+   - **Transparent Canvas Clipping:** Renders inpainted background chunks and translated Thai text onto a fully transparent window layer. Only the speech bubble bounding box areas are drawn, keeping the original artwork outside the bubbles 100% visible and untouched.
    - Translated Thai is rendered with appropriate dark/light text color, custom font, and automatic scaling/wrapping.
