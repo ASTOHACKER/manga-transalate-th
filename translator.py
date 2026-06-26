@@ -172,6 +172,10 @@ def translate_openai(texts, comic_type, api_key, model=None, base_url=None):
         data = json.loads(resp.read().decode("utf-8"))
     
     res_content = data["choices"][0]["message"]["content"].strip()
+    import re
+    match = re.search(r"\{.*\}", res_content, re.DOTALL)
+    if match:
+        res_content = match.group(0)
     return json.loads(res_content)["translations"]
 
 
@@ -194,6 +198,10 @@ def translate_gemini(texts, comic_type, api_key, model=None):
         data = json.loads(resp.read().decode("utf-8"))
     
     res_content = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    import re
+    match = re.search(r"\{.*\}", res_content, re.DOTALL)
+    if match:
+        res_content = match.group(0)
     return json.loads(res_content)["translations"]
 
 
@@ -207,7 +215,8 @@ def translate_ninerouter(texts, comic_type, url, key, model):
             {"role": "system", "content": get_translation_prompt(comic_type)},
             {"role": "user", "content": json.dumps({"texts": texts}, ensure_ascii=False)}
         ],
-        "temperature": 0.3
+        "temperature": 0.3,
+        "stream": False
     }).encode("utf-8")
 
     headers = {"Content-Type": "application/json"}
@@ -218,7 +227,7 @@ def translate_ninerouter(texts, comic_type, url, key, model):
     with urllib.request.urlopen(req, timeout=30) as resp:
         response_data = resp.read()
         
-        # Handle SSE/Streaming response if 9Router returns chunks by default
+        # Handle SSE/Streaming response if 9Router returns chunks by default (or stream=True is forced)
         decoded = response_data.decode("utf-8")
         if "data: " in decoded:
             full_content = ""
@@ -236,6 +245,10 @@ def translate_ninerouter(texts, comic_type, url, key, model):
             data = json.loads(decoded)
             res_content = data["choices"][0]["message"]["content"].strip()
             
+    import re
+    match = re.search(r"\{.*\}", res_content, re.DOTALL)
+    if match:
+        res_content = match.group(0)
     return json.loads(res_content)["translations"]
 
 
@@ -362,6 +375,12 @@ class OverlayWindow(tk.Toplevel):
         lines = []
         paragraphs = text.split('\n')
         
+        # Thai diacritics / combining characters to keep attached
+        combining_chars = {
+            '\u0e31', '\u0e34', '\u0e35', '\u0e36', '\u0e37', '\u0e38', '\u0e39', '\u0e3a',
+            '\u0e47', '\u0e48', '\u0e49', '\u0e4a', '\u0e4b', '\u0e4c', '\u0e4d', '\u0e4e'
+        }
+
         for para in paragraphs:
             if not para.strip():
                 continue
@@ -394,9 +413,14 @@ class OverlayWindow(tk.Toplevel):
                     bb_tok = draw.textbbox((0, 0), token, font=font)
                     tok_w = bb_tok[2] - bb_tok[0]
                     if tok_w > max_width:
-                        # Character-by-character wrap for long unbroken strings
+                        # Character-by-character wrap for long unbroken strings (Thai-safe)
                         sub_line = ""
                         for char in token:
+                            # If it is a combining character, always attach it to the current sub_line
+                            if char in combining_chars:
+                                sub_line += char
+                                continue
+                            
                             test_sub = sub_line + char
                             bb_sub = draw.textbbox((0, 0), test_sub, font=font)
                             if bb_sub[2] - bb_sub[0] <= max_width:
