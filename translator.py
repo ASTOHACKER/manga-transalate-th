@@ -451,11 +451,53 @@ class OverlayWindow(tk.Toplevel):
 
         font_family = self.cfg.get("font_family", "Leelawadee UI")
         max_size = int(self.cfg.get("max_font_size", 24))
+        font_weight = self.cfg.get("font_weight", "bold")
         
-        # Resolve system font path
-        font_path = "C:\\Windows\\Fonts\\leelawdb.ttf"  # Default Leelawadee UI Bold
-        if not os.path.exists(font_path):
-            font_path = "C:\\Windows\\Fonts\\tahoma.ttf"
+        # Mapping to the high-quality fonts folder copied from Manga-translate
+        fonts_dir = os.path.join(os.path.dirname(__file__), "fonts")
+        
+        def resolve_font_path(family, weight):
+            # Normalizes standard families to TTF files in our project
+            family_mapping = {
+                "Leelawadee UI": "leelawdb.ttf" if weight == "bold" else "leelawad.ttf",
+                "Sarabun": "Sarabun-Bold.ttf" if weight == "bold" else "Sarabun-Regular.ttf",
+                "Prompt": "Prompt-Bold.ttf" if weight == "bold" else "Prompt-Regular.ttf",
+                "Sriracha": "Sriracha-Regular.ttf",
+                "Pattaya": "Pattaya-Regular.ttf",
+                "Taviraj": "Taviraj-Bold.ttf" if weight == "bold" else "Taviraj-Regular.ttf",
+                "Pridi": "Pridi-Bold.ttf" if weight == "bold" else "Pridi-Regular.ttf",
+                "Playpen Sans": "PlaypenSansThai-Regular.ttf",
+            }
+            
+            # 1. Try project-specific premium fonts first
+            mapped_file = family_mapping.get(family)
+            if mapped_file:
+                project_font = os.path.join(fonts_dir, mapped_file)
+                if os.path.exists(project_font):
+                    return project_font
+            
+            # 2. Try generic matching in the project fonts folder
+            for suffix in ["-Bold.ttf" if weight == "bold" else "-Regular.ttf", ".ttf"]:
+                fuzzy_name = family.replace(" ", "") + suffix
+                project_font = os.path.join(fonts_dir, fuzzy_name)
+                if os.path.exists(project_font):
+                    return project_font
+
+            # 3. Fallback to Windows standard fonts
+            win_mapping = {
+                "Leelawadee UI": "leelawdb.ttf" if weight == "bold" else "leelawad.ttf",
+                "Segoe UI": "segoeuib.ttf" if weight == "bold" else "segoeui.ttf",
+                "Tahoma": "tahomabd.ttf" if weight == "bold" else "tahoma.ttf",
+                "Arial": "arialbd.ttf" if weight == "bold" else "arial.ttf",
+            }
+            win_file = win_mapping.get(family, "tahomabd.ttf" if weight == "bold" else "tahoma.ttf")
+            win_font = os.path.join("C:\\Windows\\Fonts", win_file)
+            if os.path.exists(win_font):
+                return win_font
+            
+            return "C:\\Windows\\Fonts\\tahoma.ttf"
+
+        font_path = resolve_font_path(font_family, font_weight)
             
         for block in blocks:
             box = block["box"]
@@ -842,7 +884,7 @@ class TranslatorApp:
         self.font_family_combo = ctk.CTkComboBox(
             ap1,
             variable=self.font_family_var,
-            values=["Leelawadee UI", "Segoe UI", "Tahoma", "Arial", "Cordia New", "Angsana New", "Microsoft Sans Serif"],
+            values=["Leelawadee UI", "Sarabun", "Prompt", "Sriracha", "Pattaya", "Taviraj", "Pridi", "Playpen Sans", "Segoe UI", "Tahoma", "Arial"],
             width=200,
             fg_color=BG_INPUT,
             button_color=BG_INPUT,
