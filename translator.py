@@ -66,7 +66,7 @@ TRANSLATE_BACKENDS = ["Google Translate (Free)", "OpenAI API", "Gemini API", "9R
 
 def load_config():
     defaults = {
-        "backend": "Google Translate (Free)", 
+        "backend": "9Router API", 
         "api_key": "", 
         "model": "", 
         "base_url": "",
@@ -102,9 +102,10 @@ def get_translation_prompt(comic_type):
     base_instruction = (
         "You are an expert comic translator. Translate the given JSON array of texts to Thai.\n"
         "Crucial Directions:\n"
-        "1. Polish and rephrase the wording ('เกาสำนวนไทย') so it reads naturally, effortlessly, and holds high literary flow in Thai. Avoid robotic word-for-word translation.\n"
-        "2. Format the Thai translation with natural line breaks ('\\n') so that the text fits beautifully inside a typical round/oval comic speech bubble.\n"
-        "3. Insert newlines ONLY at natural phrasing/breath boundaries, never mid-word. Keep lines balanced in length (prefer a balanced diamond/pyramid shape: shorter at top/bottom, wider in middle) to maximize bubble space efficiency.\n"
+        "1. Fix OCR noise, broken words, hyphenations, and typos in the input before translating (e.g. 'GLoOM' -> 'หดหู่...', 'AT :. HOME AND AT SCHO- OL:_' -> 'ทั้งที่บ้านและที่โรงเรียน', 'TO- GETH- ER?' -> 'อยู่ด้วยกัน?', 'storyi' -> 'story', 'Seeminglyt' -> 'Seemingly').\n"
+        "2. Polish and rephrase the wording ('เกาสำนวนไทย') so it reads naturally, effortlessly, and holds high literary flow in Thai. Avoid robotic word-for-word translation.\n"
+        "3. Format the Thai translation with natural line breaks ('\\n') so that the text fits beautifully inside a typical round/oval comic speech bubble.\n"
+        "4. Insert newlines ONLY at natural phrasing/breath boundaries, never mid-word. Keep lines balanced in length (prefer a balanced diamond/pyramid shape: shorter at top/bottom, wider in middle) to maximize bubble space efficiency.\n"
         "Return a JSON object with a single key 'translations' containing the array of translated strings in the exact same order."
     )
     
