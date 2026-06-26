@@ -100,23 +100,28 @@ def save_config(cfg):
 
 def get_translation_prompt(comic_type):
     base_instruction = (
-        "You are an expert manga/webtoon localizer and translator. Translate the given JSON array of English texts to natural, high-quality Thai.\n"
-        "Strictly follow these 5 core translation and typesetting rules:\n\n"
-        "1. CHARACTER VOICE (เสียงและคาร์แรคเตอร์ตัวละคร):\n"
-        "   - Match pronouns and particles to character relationships, age, and personality.\n"
-        "   - Hot-headed/casual: 'ฉัน/แก', 'ข้า/เอ็ง', 'เรา/นาย' (particles: 'ฟระ/วะ/ฟะ').\n"
-        "   - Polite/formal: 'ผม/คุณ', 'ดิฉัน/คุณ' (particles: 'คะ/ค่ะ/ครับ').\n"
-        "   - Use consistent catchphrases and tone. Never translate pronouns robotically.\n\n"
-        "2. LOCALIZATION & PUNS (การจัดการมุกตลกและบริบททางวัฒนธรรม):\n"
-        "   - Never translate puns/wordplay word-for-word. Adapt them into natural Thai humor with equivalent comedic weight.\n"
-        "   - Keep cultural terms transliterated (e.g. 'Takoyaki' -> 'ทาโกะยากิ', 'Obon' -> 'เทศกาลโอบง'). Do NOT localize them into Thai equivalents (e.g. do not translate Takoyaki to 'ขนมครกญี่ปุ่น').\n\n"
-        "3. SFX TRANSLATION (การแปลเสียงเอฟเฟกต์):\n"
-        "   - Translate environmental, action, and emotional SFX into punchy, natural Thai SFX.\n"
-        "   - Emotion: 'GLOOM' -> 'หดหู่...', 'SIGH' -> 'เฮ้อ...'\n"
-        "   - Action: 'CRASH' -> 'โครม!/ปัง!', 'SLASH' -> 'ฉับ!/ฟึ่บ!', 'STEPS' -> 'ตึก ตึก'\n"
-        "   - Match SFX volume/length: use trailing characters for loud sounds (e.g. 'ตู้มมมม!!').\n\n"
-        "4. SPACE & FORMATTING (การจัดการพื้นที่ในบอลลูนคำพูด):\n"
+        "You are an expert manga/webtoon localizer and translator. Translate the given JSON array of English texts into natural, high-quality Thai.\n"
+        "Strictly follow these core translation and typesetting rules:\n\n"
+        "1. DYNAMIC CONTEXTUAL TRANSLATION & CHARACTER VOICE (การกำหนดเสียงและคาร์แรคเตอร์ตัวละคร):\n"
+        "   - Never translate word-for-word. Analyze the relationship, age, gender, and context of the text blocks.\n"
+        "   - Match pronouns and particles dynamically to character personality and relationship:\n"
+        "     * Hot-headed/casual/delinquent: 'ฉัน/แก', 'ข้า/เอ็ง', 'เรา/นาย' (particles: 'ฟระ/วะ/ฟะ').\n"
+        "     * Polite/formal/subservient: 'ผม/คุณ', 'ดิฉัน/คุณ' (particles: 'คะ/ค่ะ/ครับ').\n"
+        "     * Close friends/youth: 'แก', 'เธอ', 'ฉัน', 'นาย'.\n"
+        "   - Maintain high consistency of character voices and catchphrases across blocks.\n\n"
+        "2. LOCALIZATION, PUNS & CULTURAL TERMS (การจัดการมุกตลกและบริบททางวัฒนธรรม):\n"
+        "   - Never translate puns/wordplay literally. Adapt them into natural Thai humor holding equivalent comedic weight.\n"
+        "   - Keep cultural terms transliterated (e.g., 'Takoyaki' -> 'ทาโกะยากิ', 'Obon' -> 'เทศกาลโอบง', 'Slime' -> 'สไลม์', 'Romcom' -> 'เลิฟคอม'). Do NOT translate them to Thai domestic equivalents (e.g. do not translate Takoyaki to 'ขนมครกญี่ปุ่น').\n\n"
+        "3. TEXT CLASSIFICATION & SFX FORMATTING (การสกัดและแปลเสียงเอฟเฟกต์):\n"
+        "   - Classify text type implicitly into Dialogue (บทสนทนา), Monologue/Narration (ข้อความบรรยาย), or SFX (เสียงเอฟเฟกต์).\n"
+        "   - If a block is classified as SFX:\n"
+        "     * Translate environmental, action, and emotional SFX into punchy, highly stylized Thai SFX (e.g. 'GLOOM' -> 'หดหู่...', 'SIGH' -> 'เฮ้อ...', 'CRASH' -> 'โครม!/ปัง!', 'SLASH' -> 'ฉับ!/ฟึ่บ!', 'STEPS' -> 'ตึก ตึก').\n"
+        "     * Return SFX enclosed in brackets like '[SFX: โครม!]' or '[SFX: เฮ้อ...]' so our rendering engine can apply special bold/italic typography.\n"
+        "     * Match SFX volume/length by repeating letters for loud sounds (e.g., 'ตู้มมมม!!').\n"
+        "   - If the block is Dialogue or Monologue/Narration, translate it naturally without any prefixes.\n\n"
+        "4. SPACE OPTIMIZATION & CONCISENESS (การจัดการพื้นที่ในบอลลูนคำพูด):\n"
         "   - Keep translations highly concise ('เกาสำนวนให้กระชับ') to prevent text overflowing or shrinking inside speech bubbles.\n"
+        "   - If a sentence is long or verbose in English, condense/summarize ('สรุปให้กระชับ') the Thai translation while retaining 100% of the core meaning, so the font size remains readable.\n"
         "   - Format with natural line breaks ('\\n') to fit beautifully inside round/oval bubbles.\n"
         "   - Keep lines balanced in length (prefer a diamond/pyramid shape: shorter at top/bottom, wider in middle).\n"
         "   - Never split a Thai word across lines (e.g., do not split 'โรงเรียน' into 'โรงเรี' and 'ยน').\n\n"
@@ -519,6 +524,12 @@ class OverlayWindow(tk.Toplevel):
         for block in blocks:
             box = block["box"]
             text = block["text"]
+            
+            # --- SFX Detection & Formatting (3.3) ---
+            is_sfx = False
+            if text.startswith("[SFX:") and text.endswith("]"):
+                is_sfx = True
+                text = text[5:-1].strip()  # Strip "[SFX:" and "]"
 
             xs = [p[0] for p in box]
             ys = [p[1] for p in box]
@@ -540,11 +551,19 @@ class OverlayWindow(tk.Toplevel):
                 pass
             
             luminance = 0.299 * bg_color[0] + 0.587 * bg_color[1] + 0.114 * bg_color[2]
-            text_color = (0, 0, 0, 255) if luminance > 130 else (255, 255, 255, 255)
-            stroke_color = (255, 255, 255, 255) if luminance <= 130 else (0, 0, 0, 255)
+            
+            # SFX styling: uses distinct high-contrast colors (e.g. dramatic red/yellow or inverse)
+            if is_sfx:
+                # Dramatic SFX colors
+                text_color = (245, 158, 11, 255) if luminance > 120 else (254, 240, 138, 255) # Golden yellow
+                stroke_color = (0, 0, 0, 255) if luminance > 120 else (180, 83, 9, 255)       # Dark orange/black stroke
+            else:
+                text_color = (0, 0, 0, 255) if luminance > 130 else (255, 255, 255, 255)
+                stroke_color = (255, 255, 255, 255) if luminance <= 130 else (0, 0, 0, 255)
 
             # Paste only the inpainted speech bubble area onto our transparent canvas
-            if self.cfg.get("inpaint_enabled", True):
+            # Do NOT inpaint for SFX - keep background raw to preserve manga action lines/art under SFX text!
+            if self.cfg.get("inpaint_enabled", True) and not is_sfx:
                 pad = 4
                 cbx0 = max(0, int(bx0 - pad))
                 cby0 = max(0, int(by0 - pad))
@@ -552,7 +571,7 @@ class OverlayWindow(tk.Toplevel):
                 cby1 = min(h, int(by1 + pad))
                 bubble_crop = inpainted_img.crop((cbx0, cby0, cbx1, cby1)).convert("RGBA")
                 overlay_layer.paste(bubble_crop, (cbx0, cby0))
-            else:
+            elif not is_sfx:
                 # If inpainting is disabled, draw a rounded bubble shape only over the text area
                 pad = 4
                 rx0, ry0, rx1, ry1 = bx0 - pad, by0 - pad, bx1 + pad, by1 + pad
@@ -562,10 +581,19 @@ class OverlayWindow(tk.Toplevel):
                     fill=(bg_color[0], bg_color[1], bg_color[2], 255)
                 )
 
-            # Dynamic font scaling
-            font_size = max(10, min(int(bh * 0.42), max_size))
+            # Dynamic font scaling - SFX should be slightly larger and italicized if possible
+            sfx_font_path = None
+            if is_sfx:
+                # Fallback to Sriracha / Pattaya for stylized SFX or a bold italic variant
+                sfx_font_path = resolve_font_path("Sriracha", "normal")
+                if not sfx_font_path or not os.path.exists(sfx_font_path):
+                    sfx_font_path = resolve_font_path("Pattaya", "normal")
+            
+            active_font_path = sfx_font_path if (is_sfx and sfx_font_path) else font_path
+            
+            font_size = max(10, min(int(bh * 0.45 if is_sfx else bh * 0.42), max_size))
             try:
-                font = ImageFont.truetype(font_path, font_size)
+                font = ImageFont.truetype(active_font_path, font_size)
             except Exception:
                 font = ImageFont.load_default()
 
