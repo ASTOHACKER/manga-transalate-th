@@ -591,13 +591,18 @@ class OverlayWindow(tk.Toplevel):
             
             active_font_path = sfx_font_path if (is_sfx and sfx_font_path) else font_path
             
-            font_size = max(10, min(int(bh * 0.45 if is_sfx else bh * 0.42), max_size))
+            # --- Dynamic Padding & Safety Margins (1.3 & 3.2) ---
+            # Normal text gets comfortable padding inside bubbles, SFX takes full space
+            h_padding = 8 if not is_sfx else 2
+            v_padding = 6 if not is_sfx else 2
+            
+            font_size = max(10, min(int((bh - v_padding * 2) * 0.45 if is_sfx else (bh - v_padding * 2) * 0.42), max_size))
             try:
                 font = ImageFont.truetype(active_font_path, font_size)
             except Exception:
                 font = ImageFont.load_default()
 
-            wrapped_text = self._wrap_thai_text_pil(draw, text, font, bw - 8)
+            wrapped_text = self._wrap_thai_text_pil(draw, text, font, bw - h_padding * 2)
             lines = wrapped_text.split("\n")
             
             def get_text_size(lines_list, fn):
@@ -615,18 +620,18 @@ class OverlayWindow(tk.Toplevel):
 
             # Scale down if overflowing the bubble boundary
             attempts = 0
-            while (th > bh or tw > bw) and font_size > 8 and attempts < 6:
+            while (th > (bh - v_padding * 2) or tw > (bw - h_padding * 2)) and font_size > 8 and attempts < 6:
                 font_size -= 2
                 try:
-                    font = ImageFont.truetype(font_path, font_size)
+                    font = ImageFont.truetype(active_font_path, font_size)
                 except Exception:
                     break
-                wrapped_text = self._wrap_thai_text_pil(draw, text, font, bw - 8)
+                wrapped_text = self._wrap_thai_text_pil(draw, text, font, bw - h_padding * 2)
                 lines = wrapped_text.split("\n")
                 tw, th = get_text_size(lines, font)
                 attempts += 1
 
-            # Render text centered inside the specific bubble area
+            # Render text centered inside the specific bubble area with safety padding offsets
             y_cursor = by0 + (bh - th) / 2
             for line in lines:
                 bb = draw.textbbox((0, 0), line, font=font)
@@ -634,12 +639,14 @@ class OverlayWindow(tk.Toplevel):
                 line_h = bb[3] - bb[1]
                 cx = bx0 + (bw - line_w) / 2
                 
+                # --- Multi-pass High Contrast Border Stroke ---
+                # Draw thick stroke first for readability, then draw main text over it
                 draw.text(
                     (cx, y_cursor), 
                     line, 
                     font=font, 
                     fill=text_color,
-                    stroke_width=1,
+                    stroke_width=2 if is_sfx else 1,
                     stroke_fill=stroke_color
                 )
                 y_cursor += line_h + int(line_h * 0.2)
