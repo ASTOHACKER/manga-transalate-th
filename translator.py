@@ -322,7 +322,8 @@ class OverlayWindow(tk.Toplevel):
         w, h = x1 - x0, y1 - y0
         self.geometry(f"{w}x{h}+{x0}+{y0}")
 
-        self.attributes("-alpha", 0.95)
+        # Semi-transparent high-end overlay panel styling
+        self.attributes("-alpha", 0.98)
         self.configure(bg="black")
         self.wm_attributes("-transparentcolor", "black")
 
@@ -333,8 +334,9 @@ class OverlayWindow(tk.Toplevel):
         self.bg_photo = ImageTk.PhotoImage(inpainted_img)
         self.canvas.create_image(0, 0, image=self.bg_photo, anchor="nw")
 
-        for block in blocks:
-            self._draw_block(block, orig_img)
+        # Custom high-fidelity font drawing using PIL directly on image
+        # PIL handles font anti-aliasing, letter spacing, and rendering MUCH cleaner than Tkinter Canvas.
+        self._render_premium_text(blocks, orig_img, inpainted_img, w, h)
 
         # Keyboard Peeking bindings
         self.bind("<KeyPress>", self._on_key_press)
@@ -352,46 +354,38 @@ class OverlayWindow(tk.Toplevel):
             pass
 
     def _on_key_press(self, event):
-        # Hold Shift or Control to quickly peek at the original page
         if event.keysym in ("Control_L", "Control_R", "Shift_L", "Shift_R"):
             self.attributes("-alpha", 0.0)
 
     def _on_key_release(self, event):
         if event.keysym in ("Control_L", "Control_R", "Shift_L", "Shift_R"):
-            self.attributes("-alpha", 0.95)
+            self.attributes("-alpha", 0.98)
 
-    def _wrap_thai_text(self, text, font, max_width):
-        """
-        Smart Thai Word Wrapping algorithm.
-        Ensures words flow naturally inside speech bubbles without cutting mid-syllable.
-        Uses a dynamic width dictionary to measure pixel dimensions accurately.
-        """
+    def _wrap_thai_text_pil(self, text, draw, font, max_width):
         max_width = max(max_width, 35)
         lines = []
         paragraphs = text.split('\n')
         
         for para in paragraphs:
-            # Tokenize Thai words cleanly (splitting on spaces first, then processing)
             tokens = para.split(' ')
             for token in tokens:
                 if not token:
                     continue
                 
                 current_line = ""
-                # Sub-segment long Thai compound tokens to prevent overflow
                 i = 0
                 while i < len(token):
-                    # We look forward to build a syllable/word part
-                    # Thai vowels and diacritics shouldn't be separated at the beginning of a line
                     char = token[i]
                     test_line = current_line + char
                     
-                    # If it fits within the speech bubble width
-                    if font.measure(test_line) <= max_width:
+                    # Measure width using PIL font metrics
+                    bbox = draw.textbbox((0, 0), test_line, font=font)
+                    w = bbox[2] - bbox[0]
+                    
+                    if w <= max_width:
                         current_line = test_line
                         i += 1
                     else:
-                        # If current_line is empty, we must force the single character to avoid infinite loop
                         if not current_line:
                             current_line = char
                             i += 1
@@ -403,98 +397,121 @@ class OverlayWindow(tk.Toplevel):
                     
         return "\n".join(lines)
 
-    def _draw_block(self, block, orig_img):
-        box = block["box"]
-        text = block["text"]
+    def _render_premium_text(self, blocks, orig_img, inpainted_img, w, h):
+        # We draw onto a clean transparent overlay image and composite it for perfect anti-aliasing
+        text_layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(text_layer)
 
-        xs = [p[0] for p in box]
-        ys = [p[1] for p in box]
-        bx0, by0 = min(xs), min(ys)
-        bx1, by1 = max(xs), max(ys)
-        bw = bx1 - bx0
-        bh = by1 - by0
-
-        if bw < 5 or bh < 5:
-            return
-
-        # Smart Background color extraction for high contrast text color selection
-        bg_color = (255, 255, 255)
-        try:
-            crop = orig_img.crop((bx0, by0, bx1, by1))
-            crop_np = np.array(crop)
-            bg_color = np.median(crop_np[:, :, :3].reshape(-1, 3), axis=0).astype(int)
-        except Exception:
-            pass
-        
-        luminance = 0.299 * bg_color[0] + 0.587 * bg_color[1] + 0.114 * bg_color[2]
-        text_color = "#000000" if luminance > 130 else "#ffffff"
-
-        # Dynamic Font Scaling & Professional Thai Typography
         font_family = self.cfg.get("font_family", "Leelawadee UI")
         max_size = int(self.cfg.get("max_font_size", 24))
-        font_weight = self.cfg.get("font_weight", "bold")
-
-        # Start with a safe, balanced font size proportional to bubble height
-        font_size = max(10, min(int(bh * 0.45), max_size))
         
-        import tkinter.font as tkfont
-        try:
-            font_obj = tkfont.Font(family=font_family, size=font_size, weight=font_weight)
-        except Exception:
-            font_obj = tkfont.Font(family="Segoe UI", size=font_size, weight="bold")
-            font_family = "Segoe UI"
+        # Resolve system font path
+        font_path = "C:\\Windows\\Fonts\\leelawdb.ttf"  # Default Leelawadee UI Bold
+        if not os.path.exists(font_path):
+            font_path = "C:\\Windows\\Fonts\\tahoma.ttf"
+            
+        for block in blocks:
+            box = block["box"]
+            text = block["text"]
 
-        # Wrap text using the smart Thai wrapping engine
-        wrapped_text = self._wrap_thai_text(text, font_obj, bw - 10)
+            xs = [p[0] for p in box]
+            ys = [p[1] for p in box]
+            bx0, by0 = min(xs), min(ys)
+            bx1, by1 = max(xs), max(ys)
+            bw = bx1 - bx0
+            bh = by1 - by0
 
-        # Precise line height and spacing calculation to avoid collision of Thai diacritics
-        line_height = font_obj.metrics("linespace")
-        # Add slight breathing room for Thai vowels/tonal marks (15% padding)
-        line_spacing_pad = max(2, int(line_height * 0.15))
-        effective_line_height = line_height + line_spacing_pad
-        
-        lines = wrapped_text.count("\n") + 1
-        total_height = lines * effective_line_height
-        
-        # Prevent vertical overflow: scale down font size if wrapped height exceeds bubble boundary
-        attempts = 0
-        while (total_height > bh or font_obj.measure(wrapped_text.split('\n')[0]) > bw) and font_size > 8 and attempts < 6:
-            font_size -= 2
-            font_obj = tkfont.Font(family=font_family, size=font_size, weight=font_weight)
-            wrapped_text = self._wrap_thai_text(text, font_obj, bw - 10)
-            line_height = font_obj.metrics("linespace")
-            effective_line_height = line_height + max(2, int(line_height * 0.15))
-            lines = wrapped_text.count("\n") + 1
-            total_height = lines * effective_line_height
-            attempts += 1
+            if bw < 5 or bh < 5:
+                continue
 
-        # Draw a fallback rounded rectangle bubble if inpainting is disabled to ensure text readability
-        if not self.cfg.get("inpaint_enabled", True):
-            bg_hex = f"#{bg_color[0]:02x}{bg_color[1]:02x}{bg_color[2]:02x}"
-            pad = 4
-            rx0, ry0, rx1, ry1 = bx0 - pad, by0 - pad, bx1 + pad, by1 + pad
-            rw, rh = rx1 - rx0, ry1 - ry0
-            radius = min(14, rw // 4, rh // 4)
-            if radius < 3:
-                self.canvas.create_rectangle(rx0, ry0, rx1, ry1, fill=bg_hex, outline="", width=0)
-            else:
-                self.canvas.create_rectangle(rx0 + radius, ry0, rx1 - radius, ry1, fill=bg_hex, outline="", width=0)
-                self.canvas.create_rectangle(rx0, ry0 + radius, rx1, ry1 - radius, fill=bg_hex, outline="", width=0)
-                self.canvas.create_oval(rx0, ry0, rx0 + 2 * radius, ry0 + 2 * radius, fill=bg_hex, outline="", width=0)
-                self.canvas.create_oval(rx1 - 2 * radius, ry0, rx1, ry0 + 2 * radius, fill=bg_hex, outline="", width=0)
-                self.canvas.create_oval(rx0, ry1 - 2 * radius, rx0 + 2 * radius, ry1, fill=bg_hex, outline="", width=0)
-                self.canvas.create_oval(rx1 - 2 * radius, ry1 - 2 * radius, rx1, ry1, fill=bg_hex, outline="", width=0)
+            # Extract color
+            bg_color = (255, 255, 255)
+            try:
+                crop = orig_img.crop((bx0, by0, bx1, by1))
+                crop_np = np.array(crop)
+                bg_color = np.median(crop_np[:, :, :3].reshape(-1, 3), axis=0).astype(int)
+            except Exception:
+                pass
+            
+            luminance = 0.299 * bg_color[0] + 0.587 * bg_color[1] + 0.114 * bg_color[2]
+            text_color = (0, 0, 0, 255) if luminance > 130 else (255, 255, 255, 255)
+            stroke_color = (255, 255, 255, 255) if luminance <= 130 else (0, 0, 0, 255)
 
-        # Center alignment (both Horizontal and Vertical) inside the bounding box
-        cx = (bx0 + bx1) / 2
-        cy = (by0 + by1) / 2
+            # Font calculation
+            font_size = max(10, min(int(bh * 0.42), max_size))
+            
+            try:
+                font = ImageFont.truetype(font_path, font_size)
+            except Exception:
+                font = ImageFont.load_default()
 
-        # Draw centered text onto the canvas with proper padding to avoid diacritic overlap
-        self.canvas.create_text(
-            cx, cy, text=wrapped_text,
-            fill=text_color, font=font_obj,
-            width=bw - 6, anchor="center", justify="center"
-        )
+            # Dynamic line wrapping & scaling loop
+            wrapped_text = self._wrap_thai_text_pil(text, draw, font, bw - 8)
+            
+            # Measure wrapped size
+            lines = wrapped_text.split("\n")
+            
+            def get_text_size(lines_list, fn):
+                th = 0
+                max_w = 0
+                for line in lines_list:
+                    bb = draw.textbbox((0, 0), line, font=fn)
+                    line_w = bb[2] - bb[0]
+                    line_h = bb[3] - bb[1]
+                    max_w = max(max_w, line_w)
+                    th += line_h + int(line_h * 0.2) # Line height + padding
+                return max_w, th
+
+            tw, th = get_text_size(lines, font)
+
+            # Prevent overflow: scale font down if too tall
+            attempts = 0
+            while (th > bh or tw > bw) and font_size > 8 and attempts < 6:
+                font_size -= 2
+                try:
+                    font = ImageFont.truetype(font_path, font_size)
+                except Exception:
+                    break
+                wrapped_text = self._wrap_thai_text_pil(text, draw, font, bw - 8)
+                lines = wrapped_text.split("\n")
+                tw, th = get_text_size(lines, font)
+                attempts += 1
+
+            # Render fallback rounded bubble under text if inpainting is off
+            if not self.cfg.get("inpaint_enabled", True):
+                pad = 4
+                rx0, ry0, rx1, ry1 = bx0 - pad, by0 - pad, bx1 + pad, by1 + pad
+                draw.rounded_rectangle(
+                    [rx0, ry0, rx1, ry1],
+                    radius=min(12, bw // 4, bh // 4),
+                    fill=(bg_color[0], bg_color[1], bg_color[2], 255)
+                )
+
+            # Perfect center calculation
+            # Draw each line centered horizontally and vertically
+            y_cursor = by0 + (bh - th) / 2
+            for line in lines:
+                bb = draw.textbbox((0, 0), line, font=font)
+                line_w = bb[2] - bb[0]
+                line_h = bb[3] - bb[1]
+                
+                cx = bx0 + (bw - line_w) / 2
+                
+                # Render clean anti-aliased font with subtle outline for maximum readability
+                draw.text(
+                    (cx, y_cursor), 
+                    line, 
+                    font=font, 
+                    fill=text_color,
+                    stroke_width=1,
+                    stroke_fill=stroke_color
+                )
+                y_cursor += line_h + int(line_h * 0.2)
+
+        # Composite the layers
+        composite_img = Image.alpha_composite(inpainted_img.convert("RGBA"), text_layer)
+        self.composite_photo = ImageTk.PhotoImage(composite_img)
+        self.canvas.create_image(0, 0, image=self.composite_photo, anchor="nw")
 
 
 # --- Main App ---
@@ -506,7 +523,7 @@ class TranslatorApp:
 
         self.root = ctk.CTk()
         self.root.title("📖 Manga Translator v2")
-        self.root.geometry("560x690") # Slightly taller to accommodate the new style dropdown
+        self.root.geometry("560x690")
         self.root.configure(fg_color=BG_MAIN)
         self.root.attributes("-topmost", True)
         self.root.resizable(True, True)
