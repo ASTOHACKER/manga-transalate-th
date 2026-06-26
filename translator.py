@@ -1400,14 +1400,16 @@ class TranslatorApp:
                                     expanded = True
                         
                         # If contour-based expansion couldn't resolve, fallback to a standard padded rectangle
-                        pad = 4 if expanded else 6
-                        cv2.rectangle(
-                            mask, 
-                            (max(0, bx0 - pad), max(0, by0 - pad)), 
-                            (min(w, bx1 + pad), min(h, by1 + pad)), 
-                            255, 
-                            -1
-                        )
+                        # SFX should not have backgrounds inpainted at all to preserve raw action lines
+                        if not is_sfx:
+                            pad = 2 if expanded else 4
+                            cv2.rectangle(
+                                mask, 
+                                (max(0, bx0 - pad), max(0, by0 - pad)), 
+                                (min(w, bx1 + pad), min(h, by1 + pad)), 
+                                255, 
+                                -1
+                            )
                     
                     # Run OpenCV Inpainting (Telea algorithm - works exceptionally well for manga line art)
                     inpainted_cv = cv2.inpaint(cv_img, mask, inpaintRadius=4, flags=cv2.INPAINT_TELEA)
