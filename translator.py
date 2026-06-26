@@ -372,35 +372,43 @@ class OverlayWindow(tk.Toplevel):
 
     def _wrap_thai_text_pil(self, draw, text, font, max_width):
         max_width = max(max_width, 35)
-        lines = []
-        paragraphs = text.split('\n')
         
         # Thai diacritics / combining characters to keep attached
         combining_chars = {
             '\u0e31', '\u0e34', '\u0e35', '\u0e36', '\u0e37', '\u0e38', '\u0e39', '\u0e3a',
             '\u0e47', '\u0e48', '\u0e49', '\u0e4a', '\u0e4b', '\u0e4c', '\u0e4d', '\u0e4e'
         }
+        
+        try:
+            from pythainlp import word_tokenize
+        except ImportError:
+            # Fallback to character/space tokenization if pythainlp is not installed
+            word_tokenize = lambda x: list(x)
 
+        paragraphs = text.split('\n')
+        lines = []
+        
         for para in paragraphs:
             if not para.strip():
                 continue
             
-            # If the individual paragraph fits, keep it as is
+            # Fast-path check: if entire paragraph fits, don't break it
             bb = draw.textbbox((0, 0), para, font=font)
             para_w = bb[2] - bb[0]
             if para_w <= max_width:
                 lines.append(para)
                 continue
-                
-            # Otherwise, wrap dynamically at spaces
-            tokens = para.split(' ')
+            
+            # Use PyThaiNLP to tokenize into actual Thai words
+            tokens = word_tokenize(para)
             current_line = ""
+            
             for token in tokens:
                 if not token:
                     continue
                 
-                # Test adding the token to the current line
-                test_line = (current_line + " " + token).strip() if current_line else token
+                # Check if adding this token fits
+                test_line = current_line + token
                 bb_test = draw.textbbox((0, 0), test_line, font=font)
                 test_w = bb_test[2] - bb_test[0]
                 
@@ -409,14 +417,12 @@ class OverlayWindow(tk.Toplevel):
                 else:
                     if current_line:
                         lines.append(current_line)
-                    # Handle extremely long words by character subdivision if necessary
+                    
+                    # If a single word/token is wider than max_width, subdivide it safely character by character
                     bb_tok = draw.textbbox((0, 0), token, font=font)
-                    tok_w = bb_tok[2] - bb_tok[0]
-                    if tok_w > max_width:
-                        # Character-by-character wrap for long unbroken strings (Thai-safe)
+                    if bb_tok[2] - bb_tok[0] > max_width:
                         sub_line = ""
                         for char in token:
-                            # If it is a combining character, always attach it to the current sub_line
                             if char in combining_chars:
                                 sub_line += char
                                 continue
@@ -432,6 +438,7 @@ class OverlayWindow(tk.Toplevel):
                         current_line = sub_line
                     else:
                         current_line = token
+            
             if current_line:
                 lines.append(current_line)
                 
